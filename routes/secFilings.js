@@ -41,7 +41,11 @@ function parseFilingsAtom(xml, defaultForm) {
     const title = (block.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || "";
     const updated = (block.match(/<updated>([\s\S]*?)<\/updated>/) || [])[1] || "";
     const summary = (block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/) || [])[1] || "";
-    const accMatch = summary.match(/Acc-no:\s*([0-9-]+)/i);
+    const idField = (block.match(/<id>([\s\S]*?)<\/id>/) || [])[1] || "";
+    // the entry's own <id> uses a strict, standardized format, accession-number=NNNNNNNNNN-NN-NNNNNN,
+    // that's a far more reliable source than the free-text summary, which is what "unknown" came from.
+    const idMatch = idField.match(/accession-number=([0-9-]+)/i);
+    const accMatch = idMatch || summary.match(/Acc-no:\s*([0-9-]+)/i);
     const formMatch = title.match(/(10-K\/A|10-K|20-F\/A|20-F)/i);
     const filingDate = updated.slice(0, 10);
     const timestamp = Math.floor(new Date(updated).getTime() / 1000);
