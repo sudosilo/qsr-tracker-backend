@@ -3,12 +3,12 @@ const { cacheAside } = require("../cache");
 
 const router = express.Router();
 
-// SEC's fair access policy wants a real identifying User-Agent naming the app and a
-// contact email on every request. Set SEC_CONTACT via env var in production, this
-// placeholder is here so the server doesn't silently send something generic.
+// SEC's documented required format is "Company Name AdminContact@example.com",
+// a plain name and email separated by a space, no parentheses. Their automated
+// blocking checks the header shape, not just whether something is present.
 const SEC_USER_AGENT = process.env.SEC_CONTACT
-  ? `qsr-tracker-backend (${process.env.SEC_CONTACT})`
-  : "qsr-tracker-backend (set SEC_CONTACT env var to a real contact email)";
+  ? `qsr-tracker-backend ${process.env.SEC_CONTACT}`
+  : "qsr-tracker-backend set-SEC_CONTACT-env-var@example.com";
 
 router.get("/", async (req, res) => {
   const symbol = (req.query.symbol || "").toUpperCase();
