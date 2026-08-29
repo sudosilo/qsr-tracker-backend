@@ -1,16 +1,19 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const cron = require("node-cron");
 
 const secFilingsRouter = require("./routes/secFilings");
 const fredRouter = require("./routes/fred");
 const tariffsRouter = require("./routes/tariffs");
-const magazineRouter = require("./routes/magazine");
+const { router: magazineRouter, refreshMagazine } = require("./routes/magazine");
 const tiingoRouter = require("./routes/tiingo");
+const syncRouter = require("./routes/sync");
 const { getClient } = require("./cache");
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 app.get("/", (req, res) => {
   res.json({ status: "ok", service: "qsr-tracker-backend" });
@@ -35,6 +38,19 @@ app.use("/fred", fredRouter);
 app.use("/tariffs", tariffsRouter);
 app.use("/magazine", magazineRouter);
 app.use("/tiingo", tiingoRouter);
+app.use("/sync", syncRouter);
+
+// this is what makes the magazine archive genuinely scheduled rather than only
+// updating when a request happens to land after its cache expires. runs every
+// hour on its own, independent of any user visiting the app.
+cron.schedule("0 * * * *", async () => {
+  try {
+    await refreshMagazine();
+    console.log("scheduled magazine refresh completed");
+  } catch (e) {
+    console.error("scheduled magazine refresh failed:", e.message);
+  }
+});
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
