@@ -44,11 +44,14 @@ router.get("/quote", async (req, res) => {
   }
 });
 
-// batches many symbols into a single upstream call, since twelve data supports up to 120
-// symbols per request. this is what actually fixes a 52-ticker cold start, one request
-// instead of 52 spaced 7.6 seconds apart. cheap to serve from cache, individually, so a
-// later request for a different mix of tickers can still reuse whichever ones are already
-// fresh and only needs to batch-fetch the rest.
+// twelve data bills one credit per symbol in a batch, not one credit per request, so this
+// only ever fetches up to the free tier's own per-minute ceiling of missing symbols in a
+// single upstream call. any leftover missing symbols beyond that stay uncached this round
+// and simply get picked up on the client's next periodic refresh, a few requests later
+// rather than risking one oversized call getting rejected outright or a single request
+// hanging through several paced chunks.
+const FREE_TIER_CREDITS_PER_MINUTE = 8;
+
 router.get("/quotes", async (req, res) => {
   if (!requireHouseKey(res)) return;
   const symbols = (req.query.symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
@@ -69,16 +72,17 @@ router.get("/quotes", async (req, res) => {
     }
   }
 
-  if (missing.length > 0) {
+  const toFetch = missing.slice(0, FREE_TIER_CREDITS_PER_MINUTE);
+  if (toFetch.length > 0) {
     try {
-      const url = "https://api.twelvedata.com/quote?symbol=" + missing.join(",") + "&apikey=" + process.env.TWELVE_DATA_HOUSE_KEY;
+      const url = "https://api.twelvedata.com/quote?symbol=" + toFetch.join(",") + "&apikey=" + process.env.TWELVE_DATA_HOUSE_KEY;
       const r = await fetch(url);
       const json = await r.json();
       // a single symbol comes back as one flat object, more than one comes back keyed by symbol,
       // handle both shapes rather than assuming the multi-symbol form applies even when only
       // one symbol ended up actually needing a fetch this round.
-      const bySymbol = missing.length === 1 && json.symbol ? { [missing[0]]: json } : json;
-      for (const symbol of missing) {
+      const bySymbol = toFetch.length === 1 && json.symbol ? { [toFetch[0]]: json } : json;
+      for (const symbol of toFetch) {
         const entry = bySymbol[symbol];
         if (!entry || entry.status === "error" || entry.code) continue;
         const parsed = {
@@ -91,12 +95,12 @@ router.get("/quotes", async (req, res) => {
         await putCache("house:quote:" + symbol, parsed, 60);
       }
     } catch (e) {
-      // whichever symbols we already had cached still get returned, only the missing
-      // ones fail silently here, individually reported by their absence from results.
+      // whichever symbols we already had cached still get returned, only the ones we
+      // attempted this round fail silently here, individually reported by their absence.
     }
   }
 
-  res.json({ results, sources, requested: symbols.length, fromCache: symbols.length - missing.length });
+  res.json({ results, sources, requested: symbols.length, fromCache: symbols.length - missing.length, deferred: missing.length - toFetch.length });
 });
 
 router.get("/history", async (req, res) => {
@@ -150,16 +154,17 @@ router.get("/histories", async (req, res) => {
     }
   }
 
-  if (missing.length > 0) {
+  const toFetch = missing.slice(0, FREE_TIER_CREDITS_PER_MINUTE);
+  if (toFetch.length > 0) {
     try {
-      const url = "https://api.twelvedata.com/time_series?symbol=" + missing.join(",") + "&interval=" + cfg.interval +
+      const url = "https://api.twelvedata.com/time_series?symbol=" + toFetch.join(",") + "&interval=" + cfg.interval +
         "&outputsize=" + cfg.size + "&timezone=UTC&apikey=" + process.env.TWELVE_DATA_HOUSE_KEY;
       const r = await fetch(url);
       const json = await r.json();
       // a single symbol's time_series comes back flat with its own "values" array at the top
       // level, more than one comes back keyed by symbol, same shape split as the quotes batch.
-      const bySymbol = missing.length === 1 && json.values ? { [missing[0]]: json } : json;
-      for (const symbol of missing) {
+      const bySymbol = toFetch.length === 1 && json.values ? { [toFetch[0]]: json } : json;
+      for (const symbol of toFetch) {
         const entry = bySymbol[symbol];
         if (!entry || entry.status === "error" || !entry.values) continue;
         const points = entry.values.map((v) => ({ date: v.datetime, close: parseFloat(v.close) })).reverse();
@@ -168,12 +173,12 @@ router.get("/histories", async (req, res) => {
         await putCache("house:history:" + symbol + ":" + apiRange, points, ttlSeconds);
       }
     } catch (e) {
-      // symbols already served from cache above still return fine, only the missing
-      // ones silently drop out of results here.
+      // symbols already served from cache above still return fine, only the ones we
+      // attempted this round silently drop out of results here.
     }
   }
 
-  res.json({ results, sources, apiRange, requested: symbols.length, fromCache: symbols.length - missing.length });
+  res.json({ results, sources, apiRange, requested: symbols.length, fromCache: symbols.length - missing.length, deferred: missing.length - toFetch.length });
 });
 
 module.exports = router;
