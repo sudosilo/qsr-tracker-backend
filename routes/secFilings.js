@@ -42,6 +42,9 @@ function parseFilingsAtom(xml, defaultForm) {
     const updated = (block.match(/<updated>([\s\S]*?)<\/updated>/) || [])[1] || "";
     const summary = (block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/) || [])[1] || "";
     const idField = (block.match(/<id>([\s\S]*?)<\/id>/) || [])[1] || "";
+    // the entry's own <link href> already points at the real, ready to open filing index
+    // page on sec.gov, CIK and all, no need to build that url ourselves or guess at one.
+    const linkMatch = block.match(/<link[^>]*href="([^"]+)"/i);
     // the entry's own <id> uses a strict, standardized format, accession-number=NNNNNNNNNN-NN-NNNNNN,
     // that's a far more reliable source than the free-text summary, which is what "unknown" came from.
     const idMatch = idField.match(/accession-number=([0-9-]+)/i);
@@ -54,6 +57,7 @@ function parseFilingsAtom(xml, defaultForm) {
       form: formMatch ? formMatch[1].toUpperCase() : defaultForm,
       filingDate,
       accessionNumber: accMatch ? accMatch[1] : "unknown",
+      filingUrl: linkMatch ? linkMatch[1] : null,
       timestamp
     });
   }
