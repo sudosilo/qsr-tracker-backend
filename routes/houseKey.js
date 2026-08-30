@@ -123,4 +123,57 @@ router.get("/history", async (req, res) => {
   }
 });
 
+// same batching idea as quotes, applied to history. opening one ticker's chart at a given
+// range pre-warms every other tracked ticker at that same range in the same request, so by
+// the time someone taps into a different one, its chart is already sitting in cache instead
+// of starting from nothing.
+router.get("/histories", async (req, res) => {
+  if (!requireHouseKey(res)) return;
+  const symbols = (req.query.symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  const apiRange = req.query.range;
+  const cfg = API_RANGE_MAP[apiRange];
+  if (symbols.length === 0 || !cfg) return res.status(400).json({ error: "symbols and a valid range (1D, 1W, or DAILY) are required" });
+  if (symbols.length > 120) return res.status(400).json({ error: "twelve data allows at most 120 symbols per batched request" });
+
+  const ttlSeconds = apiRange === "DAILY" ? 6 * 60 * 60 : 5 * 60;
+  const results = {};
+  const sources = {};
+  const missing = [];
+
+  for (const symbol of symbols) {
+    const raw = await peekCache("house:history:" + symbol + ":" + apiRange);
+    if (raw) {
+      results[symbol] = raw;
+      sources[symbol] = "cache";
+    } else {
+      missing.push(symbol);
+    }
+  }
+
+  if (missing.length > 0) {
+    try {
+      const url = "https://api.twelvedata.com/time_series?symbol=" + missing.join(",") + "&interval=" + cfg.interval +
+        "&outputsize=" + cfg.size + "&timezone=UTC&apikey=" + process.env.TWELVE_DATA_HOUSE_KEY;
+      const r = await fetch(url);
+      const json = await r.json();
+      // a single symbol's time_series comes back flat with its own "values" array at the top
+      // level, more than one comes back keyed by symbol, same shape split as the quotes batch.
+      const bySymbol = missing.length === 1 && json.values ? { [missing[0]]: json } : json;
+      for (const symbol of missing) {
+        const entry = bySymbol[symbol];
+        if (!entry || entry.status === "error" || !entry.values) continue;
+        const points = entry.values.map((v) => ({ date: v.datetime, close: parseFloat(v.close) })).reverse();
+        results[symbol] = points;
+        sources[symbol] = "live";
+        await putCache("house:history:" + symbol + ":" + apiRange, points, ttlSeconds);
+      }
+    } catch (e) {
+      // symbols already served from cache above still return fine, only the missing
+      // ones silently drop out of results here.
+    }
+  }
+
+  res.json({ results, sources, apiRange, requested: symbols.length, fromCache: symbols.length - missing.length });
+});
+
 module.exports = router;
