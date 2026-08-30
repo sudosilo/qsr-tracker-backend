@@ -1,5 +1,5 @@
 const express = require("express");
-const { cacheAside } = require("../cache");
+const { cacheAside, peekCache, putCache } = require("../cache");
 
 const router = express.Router();
 
@@ -42,6 +42,61 @@ router.get("/quote", async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: "house key quote failed", detail: e.message });
   }
+});
+
+// batches many symbols into a single upstream call, since twelve data supports up to 120
+// symbols per request. this is what actually fixes a 52-ticker cold start, one request
+// instead of 52 spaced 7.6 seconds apart. cheap to serve from cache, individually, so a
+// later request for a different mix of tickers can still reuse whichever ones are already
+// fresh and only needs to batch-fetch the rest.
+router.get("/quotes", async (req, res) => {
+  if (!requireHouseKey(res)) return;
+  const symbols = (req.query.symbols || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  if (symbols.length === 0) return res.status(400).json({ error: "symbols is required, comma separated" });
+  if (symbols.length > 120) return res.status(400).json({ error: "twelve data allows at most 120 symbols per batched request" });
+
+  const results = {};
+  const sources = {};
+  const missing = [];
+
+  for (const symbol of symbols) {
+    const raw = await peekCache("house:quote:" + symbol);
+    if (raw) {
+      results[symbol] = raw;
+      sources[symbol] = "cache";
+    } else {
+      missing.push(symbol);
+    }
+  }
+
+  if (missing.length > 0) {
+    try {
+      const url = "https://api.twelvedata.com/quote?symbol=" + missing.join(",") + "&apikey=" + process.env.TWELVE_DATA_HOUSE_KEY;
+      const r = await fetch(url);
+      const json = await r.json();
+      // a single symbol comes back as one flat object, more than one comes back keyed by symbol,
+      // handle both shapes rather than assuming the multi-symbol form applies even when only
+      // one symbol ended up actually needing a fetch this round.
+      const bySymbol = missing.length === 1 && json.symbol ? { [missing[0]]: json } : json;
+      for (const symbol of missing) {
+        const entry = bySymbol[symbol];
+        if (!entry || entry.status === "error" || entry.code) continue;
+        const parsed = {
+          price: parseFloat(entry.close),
+          change: parseFloat(entry.change),
+          percent: parseFloat(entry.percent_change)
+        };
+        results[symbol] = parsed;
+        sources[symbol] = "live";
+        await putCache("house:quote:" + symbol, parsed, 60);
+      }
+    } catch (e) {
+      // whichever symbols we already had cached still get returned, only the missing
+      // ones fail silently here, individually reported by their absence from results.
+    }
+  }
+
+  res.json({ results, sources, requested: symbols.length, fromCache: symbols.length - missing.length });
 });
 
 router.get("/history", async (req, res) => {

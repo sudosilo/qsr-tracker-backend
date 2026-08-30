@@ -74,4 +74,24 @@ async function accumulateSet(key, newItems, idField, maxAgeSeconds) {
   return merged;
 }
 
-module.exports = { cacheAside, accumulateSet, getClient };
+// thin read/write primitives for cases that need to check many keys individually and only
+// fetch what's actually missing, rather than the all-or-nothing shape cacheAside assumes.
+async function peekCache(key) {
+  const redis = getClient();
+  if (!redis) return null;
+  try {
+    const raw = await redis.get(key);
+    return raw !== null ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+async function putCache(key, value, ttlSeconds) {
+  const redis = getClient();
+  if (!redis) return;
+  try {
+    await redis.set(key, JSON.stringify(value), "EX", ttlSeconds);
+  } catch (e) {}
+}
+
+module.exports = { cacheAside, accumulateSet, getClient, peekCache, putCache };
