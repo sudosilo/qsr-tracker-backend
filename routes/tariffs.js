@@ -7,8 +7,12 @@ router.get("/", async (req, res) => {
   const cacheKey = "tariffs:watch";
   try {
     const { data, source } = await cacheAside(cacheKey, 6 * 60 * 60, async () => {
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
+      const sinceDate = since.toISOString().slice(0, 10);
       const url = "https://www.federalregister.gov/api/v1/documents.json" +
-        "?conditions%5Bterm%5D=tariff&order=newest&per_page=40" +
+        "?conditions%5Bterm%5D=tariff&conditions%5Bpublication_date%5D%5Bgte%5D=" + sinceDate +
+        "&order=newest&per_page=100" +
         "&fields%5B%5D=title&fields%5B%5D=abstract&fields%5B%5D=publication_date" +
         "&fields%5B%5D=agencies&fields%5B%5D=document_number&fields%5B%5D=type";
       const r = await fetch(url);
@@ -23,7 +27,7 @@ router.get("/", async (req, res) => {
         timestamp: Math.floor(new Date(d.publication_date).getTime() / 1000)
       })).filter((d) => !isNaN(d.timestamp));
     });
-    res.json({ docs: data, source });
+    res.json({ docs: data, source, windowDays: 30 });
   } catch (e) {
     res.status(502).json({ error: "Federal Register lookup failed", detail: e.message });
   }
