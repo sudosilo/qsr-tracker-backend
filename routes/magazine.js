@@ -3,7 +3,7 @@ const { XMLParser } = require("fast-xml-parser");
 const { cacheAside, accumulateSet } = require("../cache");
 
 const router = express.Router();
-const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", htmlEntities: true });
 
 async function refreshMagazine() {
   const { data: fresh } = await cacheAside("magazine:raw-pull", 60 * 60, async () => {
