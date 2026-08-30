@@ -1,3 +1,20 @@
+// QSR Tracker Backend — Orange phone code
+// Built and maintained on Orange's phone, sudosilo on GitHub, paired with the frontend
+// at github.com/sudosilo/shitty-ass-trading-app.
+//
+// What this is: a small Express service on Railway with Redis, relaying the providers the
+// static frontend can't reach directly, SEC EDGAR, the Federal Register, the QSR Magazine
+// feed, Tiingo, FRED (both commodity spot prices and futures via a Yahoo Finance relay), a
+// shared "house key" for Twelve Data so new users see data with zero setup, and a
+// cross-device sync code system with no accounts or login.
+//
+// Handoff note: Twelve Data bills one credit per symbol in a batch request, not one credit
+// per HTTP call, so batching reduces request count but never reduces credits spent. Both
+// the house key routes here and the frontend's personal-key path cap batches to 8 symbols
+// per call to respect the free tier's per-minute limit, and the frontend separately paces
+// its own refresh interval to respect the 800-per-day limit. See houseKey.js for the
+// per-request cap and tickertracker.html's startPolling for the daily pacing.
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
