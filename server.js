@@ -24,6 +24,7 @@ const secFilingsRouter = require("./routes/secFilings");
 const fredRouter = require("./routes/fred");
 const tariffsRouter = require("./routes/tariffs");
 const { router: magazineRouter, refreshMagazine } = require("./routes/magazine");
+const { router: foodNetworkRouter, refreshFoodNetwork } = require("./routes/foodNetwork");
 const tiingoRouter = require("./routes/tiingo");
 const syncRouter = require("./routes/sync");
 const futuresRouter = require("./routes/futures");
@@ -60,6 +61,7 @@ app.use("/tiingo", tiingoRouter);
 app.use("/sync", syncRouter);
 app.use("/futures", futuresRouter);
 app.use("/house", houseKeyRouter);
+app.use("/foodnetwork", foodNetworkRouter);
 
 // this is what makes the magazine archive genuinely scheduled rather than only
 // updating when a request happens to land after its cache expires. runs every
@@ -70,6 +72,12 @@ cron.schedule("0 * * * *", async () => {
     console.log("scheduled magazine refresh completed");
   } catch (e) {
     console.error("scheduled magazine refresh failed:", e.message);
+  }
+  try {
+    await refreshFoodNetwork();
+    console.log("scheduled food network refresh completed");
+  } catch (e) {
+    console.error("scheduled food network refresh failed:", e.message);
   }
 });
 
