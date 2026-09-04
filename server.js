@@ -25,6 +25,7 @@ const fredRouter = require("./routes/fred");
 const tariffsRouter = require("./routes/tariffs");
 const { router: magazineRouter, refreshMagazine } = require("./routes/magazine");
 const { router: foodNetworkRouter, refreshFoodNetwork } = require("./routes/foodNetwork");
+const congressTradingRouter = require("./routes/congressTrading");
 const tiingoRouter = require("./routes/tiingo");
 const syncRouter = require("./routes/sync");
 const futuresRouter = require("./routes/futures");
@@ -62,6 +63,7 @@ app.use("/sync", syncRouter);
 app.use("/futures", futuresRouter);
 app.use("/house", houseKeyRouter);
 app.use("/foodnetwork", foodNetworkRouter);
+app.use("/congress-trading", congressTradingRouter);
 
 // this is what makes the magazine archive genuinely scheduled rather than only
 // updating when a request happens to land after its cache expires. runs every
