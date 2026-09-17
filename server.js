@@ -30,6 +30,7 @@ const tiingoRouter = require("./routes/tiingo");
 const syncRouter = require("./routes/sync");
 const futuresRouter = require("./routes/futures");
 const houseKeyRouter = require("./routes/houseKey");
+const engineRouter = require("./routes/engine");
 const { getClient } = require("./cache");
 
 const app = express();
@@ -64,6 +65,7 @@ app.use("/futures", futuresRouter);
 app.use("/house", houseKeyRouter);
 app.use("/foodnetwork", foodNetworkRouter);
 app.use("/congress-trading", congressTradingRouter);
+app.use("/engine", engineRouter);
 
 // this is what makes the magazine archive genuinely scheduled rather than only
 // updating when a request happens to land after its cache expires. runs every
